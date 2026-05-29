@@ -1,0 +1,2 @@
+model,mpjpe_80ms,mpjpe_160ms,mpjpe_320ms,mpjpe_560ms,mpjpe_1000ms,ade,fde,gvr,ble_mm,inference_ms
+Zero-Velocity,17.16,32.84,58.22,84.28,116.84,74.57,116.84,0.0,0.0,0.08
