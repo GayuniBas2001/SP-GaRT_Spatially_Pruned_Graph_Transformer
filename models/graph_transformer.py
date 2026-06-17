@@ -357,11 +357,21 @@ class DenseGraphTransformer(nn.Module):
         
         # ── Pooling — from (B, T, J, d) to (B, T, d) ─────────
         # After spatio-temporal encoding, pool over joints
-        # to get one vector per time step for the decoder
-        # Simple mean pooling — averages information across joints
-        # Alternative: learned attention pooling (more complex)
-        # We use mean for simplicity and stability
-        self.pool = lambda x: x.mean(dim=2)  # mean over joints
+        # to get one vector per time step for the decoder.
+        #
+        # Mean pooling was tried first but destroys per-joint
+        # identity right before the decoder needs to reconstruct
+        # individual joint positions — this caused BLE to nearly
+        # double compared to M1 (23.4mm -> 42.6mm) because the
+        # decoder could no longer tell which blended signal
+        # belonged to which joint.
+        #
+        # Learned pooling instead concatenates all 17 joint
+        # vectors and projects them through a trainable layer,
+        # letting the model learn which joints matter most
+        # for the temporal summary rather than averaging
+        # them away uniformly.
+        self.pool_proj = nn.Linear(J * d_model, d_model)
         
         # ── Decoder — identical to M1 ─────────────────────────
         # Using the same decoder as M1 for fair comparison
@@ -428,8 +438,13 @@ class DenseGraphTransformer(nn.Module):
         
         # ── Step 4: Pool over joints to get memory ────────────
         # (B, T_obs, J, 256) → (B, T_obs, 256)
-        # Decoder needs one vector per time step
-        memory = self.pool(x)
+        # Decoder needs one vector per time step.
+        # Concatenate all joint vectors per frame, then
+        # project through a learned linear layer — preserves
+        # per-joint information instead of averaging it away.
+        B_, T_, J_, d_ = x.shape
+        x_flat = x.reshape(B_, T_, J_ * d_)
+        memory = self.pool_proj(x_flat)
         
         # ── Step 5: Build decoder queries (same as M1) ────────
         query_idx = torch.arange(
